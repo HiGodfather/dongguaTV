@@ -44,6 +44,19 @@
             min-height: 100vh;
             padding-bottom: 60px;
             overflow-x: hidden;
+            /* Firefox Mobile 闪烁修复 */
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+
+        /* 修复 Firefox 滚动时的黑色方块 */
+        * {
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+            scrollbar-width: thin;
+            /* 禁用点击高亮背景 */
+            -webkit-tap-highlight-color: transparent;
         }
 
         /* ========== 🎬 DPlayer 高级美化样式 ========== */
@@ -1154,10 +1167,43 @@
             /* 确保 Intersection Observer 能检测到进入视口 */
         }
 
+        /* 分类标题与排序切换 */
+        .section-title i.sort-toggle-icon {
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            margin-right: 12px;
+            color: var(--accent);
+            display: inline-block;
+        }
+
+        .section-title i.sort-toggle-icon:active {
+            transform: scale(0.85);
+        }
+
+        .section-title i.sort-toggle-icon.popular {
+            color: #ffaa00;
+            /* 热门使用金色/橙色提示 */
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.3);
+        }
+
+        .sort-indicator {
+            font-size: 10px;
+            font-weight: 900;
+            padding: 1px 4px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.4);
+            margin-left: 8px;
+            vertical-align: middle;
+            letter-spacing: 0.5px;
+            pointer-events: none;
+        }
+
         .section-header {
             display: flex;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 25px;
+            padding: 0 10px;
         }
 
         .section-line {
@@ -1198,6 +1244,22 @@
             /* 添加滚动捕捉，让滚动更自然 */
             scroll-snap-type: x proximity;
             -webkit-overflow-scrolling: touch;
+            /* Firefox Mobile 闪烁修复 */
+            will-change: scroll-position;
+            /* 告知浏览器此元素滚动位置会变化 */
+            transform: translateZ(0);
+            /* 强制 GPU 层 */
+            background-color: transparent;
+            /* 避免背景重绘 */
+            /* 布局稳定性修复 */
+            min-height: 340px;
+            /* 预留足够高度，防止切换排序时容器坍塌导致的页面跳动 */
+            transition: opacity 0.3s ease;
+        }
+
+        .hot-row.loading {
+            opacity: 0.5;
+            pointer-events: none;
         }
 
         .hot-row>.hot-card,
@@ -1261,6 +1323,10 @@
             cursor: pointer;
             transition: 0.3s;
             position: relative;
+            /* Firefox Mobile 闪烁修复 - 独立分层 */
+            backface-visibility: hidden;
+            transform-style: preserve-3d;
+            contain: content;
         }
 
         .hot-card:hover {
@@ -2167,6 +2233,45 @@
             accent-color: #e50914;
             cursor: pointer;
         }
+
+        /* ========== Firefox Android 闪烁修复 ========== */
+        /* 在移动端禁用可能导致渲染问题的效果 */
+        @media (max-width: 768px),
+        (hover: none) {
+
+            /* 禁用毛玻璃效果 */
+            .dplayer-controller,
+            .dplayer-setting-box,
+            .search-form,
+            .detail-overlay .detail-container {
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+            }
+
+            /* 减少 box-shadow 复杂度 */
+            .dplayer-bar-wrap .dplayer-thumb,
+            .dplayer-bezel-icon {
+                box-shadow: none !important;
+            }
+
+            /* 禁用 filter 效果 */
+            .search-icon,
+            .hero-search button {
+                filter: none !important;
+            }
+
+            /* 确保所有元素有明确背景，防止透明层闪烁 */
+            .hot-card img,
+            .history-card img {
+                background-color: var(--panel-bg);
+            }
+
+            /* 禁用 hover 动画（移动端不需要） */
+            .hot-card:hover,
+            .history-card:hover {
+                transform: none !important;
+            }
+        }
     </style>
 </head>
 
@@ -2333,7 +2438,18 @@
                 <!-- 标题区（始终显示，用于懒加载触发） -->
                 <div class="section-header" style="display: flex; align-items: center;">
                     <div class="section-line"></div>
-                    <div class="section-title"><i :class="['fas', config.icon]"></i> {{ config.title }}</div>
+                    <div class="section-title">
+                        <!-- 仅对带 sortMode 的 discover 分类显示切换图标 -->
+                        <i :class="['fas', config.icon, config.sortMode ? 'sort-toggle-icon' : '', config.sortMode]"
+                            @click.stop="config.sortMode ? toggleSortMode(key) : null"
+                            :style="{ cursor: config.sortMode ? 'pointer' : 'default' }"
+                            :title="config.sortMode ? '点击切换排序 (当前: ' + (config.sortMode === 'newest' ? '最新' : '热门') + ')' : ''"></i>
+                        {{ config.title }}
+                        <!-- 仅对 discover 分类显示排序角标 -->
+                        <span v-if="config.sortMode && config.path.includes('/discover/')" class="sort-indicator">
+                            {{ config.sortMode === 'newest' ? 'NEW' : 'HOT' }}
+                        </span>
+                    </div>
                     <span class="expand-toggle" :class="{ expanded: expandedRows[key] }" @click="toggleRowExpand(key)"
                         v-show="rowLists[key] && rowLists[key].length > 0">
                         {{ expandedRows[key] ? '收起' : '展开' }}
@@ -2350,9 +2466,10 @@
                     <div class="scroll-container" v-show="!expandedRows[key]">
                         <button class="scroll-btn left" @click="scrollRow(key, -1)" v-show="rowLeftButtons[key]"><i
                                 class="fas fa-chevron-left"></i></button>
-                        <div class="hot-row" :ref="key" @scroll="onRowScroll(key)">
+                        <div class="hot-row" :class="{ loading: pageRefreshingKeys[key] }" :ref="key"
+                            @scroll="onRowScroll(key)">
                             <div class="hot-card" v-for="item in rowLists[key]" :key="item.id"
-                                @click="autoSearch(item.title || item.name)">
+                                @click="openInfoModal(item)">
                                 <div class="poster-wrap">
                                     <img :src="getPosterUrl(item.poster_path)" loading="lazy">
                                     <div class="rating-badge"><i class="fas fa-star text-warning"></i> {{
@@ -2861,27 +2978,28 @@
                     expandedRows: {}, // 存储各榜单的展开状态 { movieRow: true, ... }
                     viewPages: {}, // 存储各榜单展开时的查看页码 { movieRow: 1, ... }
                     pageLoadingKeys: {}, // 防止重复快速点击加载 { movieRow: true, ... }
+                    pageRefreshingKeys: {}, // 控制视觉上的“灰色遮盖”加载状态
                     rowConfigs: {
+                        randomRow: { title: '随机盲盒·惊喜呈现', icon: 'fa-random', path: 'MIXED', params: '', page: 1 },
                         movieRow: { title: '全球震感·电影榜', icon: 'fa-film', path: '/trending/movie/week', params: '', page: 1 },
                         tvRow: { title: '全球必追·剧集榜', icon: 'fa-tv', path: '/trending/tv/week', params: '', page: 1 },
-                        cnRow: { title: '华语强档·国产剧', icon: 'fa-dragon', path: '/discover/tv', params: 'with_origin_country=CN&sort_by=popularity.desc', page: 1 },
-                        usRow: { title: '美剧·高能剧集', icon: 'fa-flag-usa', path: '/discover/tv', params: 'with_origin_country=US&sort_by=popularity.desc', page: 1 },
-                        krjpRow: { title: '日韩潮流·剧集', icon: 'fa-mask', path: '/discover/tv', params: 'with_origin_country=KR|JP&sort_by=popularity.desc', page: 1 },
-                        animeRow: { title: '二次元·动漫番剧', icon: 'fa-ghost', path: '/discover/tv', params: 'with_genres=16&sort_by=popularity.desc', page: 1 },
-                        scifiRow: { title: '科幻奇幻·星际穿越', icon: 'fa-rocket', path: '/discover/movie', params: 'with_genres=878,14&sort_by=popularity.desc', page: 1 },
-                        actionRow: { title: '动作大片·肾上腺素', icon: 'fa-bomb', path: '/discover/movie', params: 'with_genres=28&sort_by=popularity.desc', page: 1 },
-                        comedyRow: { title: '开心喜剧·解压必备', icon: 'fa-laugh-squint', path: '/discover/movie', params: 'with_genres=35&sort_by=popularity.desc', page: 1 },
-                        crimeRow: { title: '犯罪悬疑·烧脑神作', icon: 'fa-user-secret', path: '/discover/movie', params: 'with_genres=80,9648&sort_by=popularity.desc', page: 1 },
-                        romanceRow: { title: '爱情·浪漫满屋', icon: 'fa-heart', path: '/discover/movie', params: 'with_genres=10749&sort_by=popularity.desc', page: 1 },
-                        familyRow: { title: '合家欢·温馨时刻', icon: 'fa-home', path: '/discover/movie', params: 'with_genres=10751&sort_by=popularity.desc', page: 1 },
-                        docRow: { title: '纪录片·探索世界', icon: 'fa-video', path: '/discover/movie', params: 'with_genres=99&sort_by=popularity.desc', page: 1 },
-                        warRow: { title: '战争·史诗巨制', icon: 'fa-fighter-jet', path: '/discover/movie', params: 'with_genres=10752&sort_by=popularity.desc', page: 1 },
-                        horrorRow: { title: '恐怖惊悚·胆小勿入', icon: 'fa-skull', path: '/discover/movie', params: 'with_genres=27&sort_by=popularity.desc', page: 1 },
-                        mysteryRow: { title: '烧脑悬疑·层层反转', icon: 'fa-search', path: '/discover/movie', params: 'with_genres=9648&sort_by=popularity.desc', page: 1 },
-                        fantasyRow: { title: '奇幻冒险·异想天开', icon: 'fa-hat-wizard', path: '/discover/movie', params: 'with_genres=14&sort_by=popularity.desc', page: 1 },
-                        varietyRow: { title: '热门综艺·娱乐生活', icon: 'fa-microphone-alt', path: '/discover/tv', params: 'with_genres=10764&sort_by=popularity.desc', page: 1 },
-                        historyRow: { title: '历史·岁月长河', icon: 'fa-landmark', path: '/discover/movie', params: 'with_genres=36&sort_by=popularity.desc', page: 1 },
-                        adventureRow: { title: '惊险冒险·勇敢者游戏', icon: 'fa-compass', path: '/discover/movie', params: 'with_genres=12&sort_by=popularity.desc', page: 1 },
+                        cnRow: { title: '华语强档·国产剧', icon: 'fa-dragon', path: '/discover/tv', params: 'with_origin_country=CN', page: 1, sortMode: 'newest' },
+                        usRow: { title: '美剧·高能剧集', icon: 'fa-flag-usa', path: '/discover/tv', params: 'with_origin_country=US', page: 1, sortMode: 'newest' },
+                        krjpRow: { title: '日韩潮流·剧集', icon: 'fa-mask', path: '/discover/tv', params: 'with_origin_country=KR|JP', page: 1, sortMode: 'newest' },
+                        animeRow: { title: '二次元·动漫番剧', icon: 'fa-ghost', path: '/discover/tv', params: 'with_genres=16', page: 1, sortMode: 'newest' },
+                        scifiRow: { title: '科幻奇幻·星际穿越', icon: 'fa-rocket', path: '/discover/movie', params: 'with_genres=878,14', page: 1, sortMode: 'newest' },
+                        actionRow: { title: '动作大片·肾上腺素', icon: 'fa-bomb', path: '/discover/movie', params: 'with_genres=28', page: 1, sortMode: 'newest' },
+                        comedyRow: { title: '开心喜剧·解压必备', icon: 'fa-laugh-squint', path: '/discover/movie', params: 'with_genres=35', page: 1, sortMode: 'newest' },
+                        crimeRow: { title: '犯罪悬疑·烧脑神作', icon: 'fa-user-secret', path: '/discover/movie', params: 'with_genres=80,9648', page: 1, sortMode: 'newest' },
+                        romanceRow: { title: '爱情·浪漫满屋', icon: 'fa-heart', path: '/discover/movie', params: 'with_genres=10749', page: 1, sortMode: 'newest' },
+                        familyRow: { title: '合家欢·温馨时刻', icon: 'fa-home', path: '/discover/movie', params: 'with_genres=10751', page: 1, sortMode: 'newest' },
+                        docRow: { title: '纪录片·探索世界', icon: 'fa-video', path: '/discover/movie', params: 'with_genres=99', page: 1, sortMode: 'newest' },
+                        warRow: { title: '战争·史诗巨制', icon: 'fa-fighter-jet', path: '/discover/movie', params: 'with_genres=10752', page: 1, sortMode: 'newest' },
+                        horrorRow: { title: '恐怖惊悚·胆小勿入', icon: 'fa-skull', path: '/discover/movie', params: 'with_genres=27', page: 1, sortMode: 'newest' },
+                        mysteryRow: { title: '烧脑悬疑·层层反转', icon: 'fa-search', path: '/discover/movie', params: 'with_genres=9648', page: 1, sortMode: 'newest' },
+                        fantasyRow: { title: '奇幻冒险·异想天开', icon: 'fa-hat-wizard', path: '/discover/movie', params: 'with_genres=14', page: 1, sortMode: 'newest' },
+                        varietyRow: { title: '热门综艺·娱乐生活', icon: 'fa-microphone-alt', path: '/discover/tv', params: 'with_genres=10764', page: 1, sortMode: 'newest' },
+                        historyRow: { title: '历史·岁月长河', icon: 'fa-landmark', path: '/discover/movie', params: 'with_genres=36', page: 1, sortMode: 'newest' },
                     },
 
                     movieList: [], tvList: [], list_cn: [], list_krjp: [],
@@ -3564,6 +3682,9 @@
 
                 // 加载单个榜单数据
                 fetchRow(key, loadMore = false) {
+                    if (key === 'randomRow') {
+                        return this.fetchRandomMixed(loadMore);
+                    }
                     const config = this.rowConfigs[key];
                     if (!config) return Promise.resolve();
 
@@ -3576,7 +3697,24 @@
                         config.page++;
                     }
 
-                    const url = `${TMDB_BASE_URL}${config.path}?api_key=${TMDB_API_KEY}&language=zh-CN&page=${config.page}&${config.params}`;
+                    // 构建排序参数
+                    let sortParam = '';
+                    if (config.sortMode && config.path.includes('/discover/')) {
+                        const isMovie = config.path.includes('/movie');
+                        if (config.sortMode === 'newest') {
+                            const dateField = isMovie ? 'primary_release_date.desc' : 'first_air_date.desc';
+                            sortParam = `&sort_by=${dateField}&vote_count.gte=10`;
+                        } else {
+                            sortParam = '&sort_by=popularity.desc';
+                        }
+                    }
+
+                    if (this.pageLoadingKeys[key]) return Promise.resolve();
+                    this.pageLoadingKeys[key] = true;
+                    // 仅在非“加载更多”模式下开启遮罩遮盖
+                    if (!loadMore) this.pageRefreshingKeys[key] = true;
+
+                    const url = `/api/tmdb-proxy?path=${encodeURIComponent(config.path)}&page=${config.page}&${config.params}${sortParam}`;
                     return fetch(url)
                         .then(res => res.json())
                         .then(data => {
@@ -3595,7 +3733,29 @@
                                 }
                             }
                         })
-                        .catch(err => console.error(`Fetch error for ${key}:`, err));
+                        .catch(err => console.error(`Fetch error for ${key}:`, err))
+                        .finally(() => {
+                            this.pageLoadingKeys[key] = false;
+                            this.pageRefreshingKeys[key] = false;
+                        });
+                },
+
+                // 隐秘切换排序模式
+                toggleSortMode(key) {
+                    const config = this.rowConfigs[key];
+                    if (!config || !config.path.includes('/discover/')) return;
+
+                    // 切换模式
+                    config.sortMode = config.sortMode === 'newest' ? 'popular' : 'newest';
+                    console.log(`[排序切换] ${config.title} -> ${config.sortMode}`);
+
+                    // 重置该行数据并重新加载
+                    config.page = 1;
+                    // this.rowLists[key] = []; // 不再立即清空数据，防止高度坍塌导致的布局跳动
+                    this.fetchRow(key);
+
+                    // 轻微的触觉/视觉反馈 (如果是手机端)
+                    if (window.navigator.vibrate) window.navigator.vibrate(10);
                 },
 
                 // 初始化榜单 (全部直接加载，避免懒加载问题)
@@ -3610,35 +3770,81 @@
 
                     console.log(`[设备检测] 宽度=${viewportWidth}, 触摸=${isTouchDevice}, UA移动=${isMobileUA}, 判定=${isMobile ? '移动端' : '桌面端'}`);
 
-                    // 统一使用直接加载所有榜单（无论移动端还是桌面端）
+                    // 统一使用直接加载所有榜单
                     console.log(`[榜单加载] 直接加载所有 ${keys.length} 个榜单`);
                     keys.forEach((key, index) => {
-                        // 每个榜单间隔 200ms 加载，避免 API 速率限制
                         setTimeout(() => {
                             this.fetchRow(key);
                         }, index * 200);
                     });
                 },
 
+                // 🎲 核心：全类别随机混搭抓取
+                async fetchRandomMixed(loadMore = false) {
+                    const config = this.rowConfigs.randomRow;
+                    if (!config) return Promise.resolve();
+
+                    console.log('[随机盲盒] 正在调制全类别混搭数据...');
+
+                    const randomRequests = [];
+                    const types = ['movie', 'tv'];
+
+                    // 每次抓取生成 4 个不同的随机源
+                    for (let i = 0; i < 4; i++) {
+                        const type = types[Math.floor(Math.random() * types.length)];
+                        // 从 1990 到 2024 中随机选一年
+                        const year = Math.floor(Math.random() * 35) + 1990;
+                        const page = Math.floor(Math.random() * 10) + 1;
+
+                        // 随机选一种过滤
+                        const filters = [
+                            `with_original_language=zh|en|ja|ko`,
+                            `vote_average.gte=6`,
+                            `with_genres=${[28, 35, 10749, 16, 80, 18, 14][Math.floor(Math.random() * 7)]}`
+                        ];
+                        const filter = filters[Math.floor(Math.random() * filters.length)];
+
+                        const url = `/api/tmdb-proxy?path=${encodeURIComponent('/discover/' + type)}&page=${page}&sort_by=popularity.desc&${filter}`;
+                        randomRequests.push(fetch(url).then(res => res.json()));
+                    }
+
+                    try {
+                        const results = await Promise.all(randomRequests);
+                        let combined = [];
+                        results.forEach(data => {
+                            if (data.results) combined.push(...data.results);
+                        });
+
+                        // --- 🔀 洗牌算法 (Fisher-Yates Shuffle) ---
+                        for (let i = combined.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [combined[i], combined[j]] = [combined[j], combined[i]];
+                        }
+
+                        if (!this.rowLists.randomRow || !loadMore) {
+                            this.rowLists.randomRow = combined;
+                        } else {
+                            this.rowLists.randomRow.push(...combined);
+                        }
+
+                        console.log(`[随机盲盒] 成功混搭并洗牌 ${combined.length} 条数据`);
+                    } catch (e) {
+                        console.error('[随机盲盒] 混搭失败:', e);
+                    }
+                },
+
                 scrollRow(refName, direction) {
                     let row = this.$refs[refName];
-                    // v-for 中的 ref 是数组
                     if (Array.isArray(row)) row = row[0];
-
                     if (row) {
-                        // 每次滚动半屏宽度
                         const scrollAmount = row.clientWidth * 0.6;
                         row.scrollLeft += direction * scrollAmount;
-
-                        // 向右滚动时触发加载下一页
-                        if (direction > 0) {
-                            this.fetchRow(refName, true);
-                        }
+                        if (direction > 0) this.fetchRow(refName, true);
                     }
                 },
 
                 fetchHero() {
-                    return fetch(`${TMDB_BASE_URL}/trending/all/week?api_key=${TMDB_API_KEY}&language=zh-CN`)
+                    return fetch(`/api/tmdb-proxy?path=${encodeURIComponent('/trending/all/week')}`)
                         .then(res => res.json())
                         .then(data => {
                             if (data.results) {
@@ -3646,7 +3852,7 @@
                                     title: item.title || item.name,
                                     overview: item.overview || '精彩内容不容错过',
                                     backdrop: `${TMDB_BACKDROP_URL}${item.backdrop_path}`,
-                                    rawData: item  // 保存原始数据用于弹窗
+                                    rawData: item
                                 }));
                             }
                         });
@@ -3662,7 +3868,7 @@
                     if (this.imageMap[name] || this.fallbackMap[name]) return;
                     this.fallbackMap[name] = true;
                     let cleanName = name.replace(/第[0-9一二三四五六七八九十]+[季部]/g, '').replace(/Season\s*\d+/ig, '').replace(/S\d{1,2}/ig, '').replace(/(HD|BD|1080P|720P|4K|202\d|TC|TS).*/i, '').trim();
-                    fetch(`${TMDB_BASE_URL}/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(cleanName)}&language=zh-CN`)
+                    fetch(`/api/tmdb-proxy?path=${encodeURIComponent('/search/multi')}&query=${encodeURIComponent(cleanName)}`)
                         .then(res => res.json()).then(data => {
                             if (data.results && data.results.length > 0) {
                                 const found = data.results.find(i => i.poster_path) || data.results[0];

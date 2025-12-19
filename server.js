@@ -126,6 +126,46 @@ app.get('/api/config', (req, res) => {
     });
 });
 
+// TMDB 通用代理与缓存 API
+const TMDB_CACHE_TTL = 3600 * 10; // 缓存 10 小时
+app.get('/api/tmdb-proxy', async (req, res) => {
+    const { path: tmdbPath, ...params } = req.query;
+
+    if (!tmdbPath) return res.status(400).json({ error: 'Missing path' });
+
+    const TMDB_API_KEY = process.env.TMDB_API_KEY;
+    if (!TMDB_API_KEY) return res.status(500).json({ error: 'API Key not configured' });
+
+    // 构建唯一的缓存 Key (排序参数以确保 Key 稳定)
+    const sortedParams = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+    const cacheKey = `tmdb_proxy_${tmdbPath}_${sortedParams}`;
+
+    const cached = cacheManager.get('detail', cacheKey);
+    if (cached) {
+        // console.log(`[TMDB Proxy] Cache Hit: ${cacheKey}`);
+        return res.json(cached);
+    }
+
+    try {
+        const TMDB_BASE = 'https://api.themoviedb.org/3';
+        const response = await axios.get(`${TMDB_BASE}${tmdbPath}`, {
+            params: {
+                ...params,
+                api_key: TMDB_API_KEY,
+                language: 'zh-CN'
+            },
+            timeout: 10000
+        });
+
+        // 缓存结果
+        cacheManager.set('detail', cacheKey, response.data, TMDB_CACHE_TTL);
+        res.json(response.data);
+    } catch (error) {
+        console.error(`[TMDB Proxy Error] ${tmdbPath}:`, error.message);
+        res.status(error.response?.status || 500).json({ error: 'Proxy request failed' });
+    }
+});
+
 // 1. 获取站点列表
 app.get('/api/sites', async (req, res) => {
     let sitesData = null;
