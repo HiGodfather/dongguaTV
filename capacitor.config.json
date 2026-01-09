@@ -1,9 +1,9 @@
 ﻿{
     "appId": "com.ednovas.donguatv",
-    "appName": "E视界",
+    "appName": "Ky Private Cinema",
     "webDir": "public",
     "server": {
-        "url": "https://ednovas.video",
+        "url": "http://192.168.2.8:3600",
         "cleartext": true
     },
     "plugins": {
@@ -14,4 +14,5 @@
         },
         "ScreenOrientation": {}
     }
+
 }
